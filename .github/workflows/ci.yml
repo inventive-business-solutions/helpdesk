@@ -1,5 +1,10 @@
 name: INVENTIVE FRAPPE CI PIPELINE
 
+# allow GITHUB_TOKEN to push to GHCR
+permissions:
+  contents: read # still need to checkout your code
+  packages: write # <— grant write access to the Container Registry
+
 on:
   push:
     branches:
