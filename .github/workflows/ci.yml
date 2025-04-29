@@ -1,0 +1,72 @@
+name: INVENTIVE FRAPPE CI PIPELINE
+
+on:
+  push:
+    branches:
+      - inventive-main
+  workflow_dispatch:
+
+jobs:
+  BUILD_DEV:
+    runs-on: [self-hosted, dev-arm64]
+    environment: Inventive
+
+    steps:
+      - name: Checkout Main Repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU for cross-platform builds
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+          install: true
+          buildkitd-flags: --debug
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout Frappe Docker Repository
+        uses: actions/checkout@v4
+        with:
+          repository: frappe/frappe_docker
+          path: builds
+
+      - name: Set up Docker Build Cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: buildx-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            buildx-${{ github.ref }}-
+            buildx-
+
+      - name: Build and Push ARM64 Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: builds
+          file: builds/images/custom/Containerfile
+          push: true
+          tags: |
+            ${{ vars.IMAGE_NAME }}:${{ github.sha }}
+            ${{ vars.IMAGE_NAME }}:latest
+          platforms: linux/arm64
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new
+          build-args: |
+            FRAPPE_PATH=https://github.com/frappe/frappe
+            FRAPPE_BRANCH=version-15
+            PYTHON_VERSION=3.13.3
+            NODE_VERSION=22.11.0
+            APPS_JSON_BASE64=${{ vars.APPS_JSON_BASE64 }}
+
+      - name: Move new cache into place
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
